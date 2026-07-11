@@ -17,12 +17,11 @@ spec:
         app: node-app
 
     spec:
+      imagePullSecrets:
+      - name: ecr-secret
+
       containers:
       - name: node-app
-
-        image: node-app:v1
-
-        imagePullPolicy: IfNotPresent
-
+        image: 646724772680.dkr.ecr.ap-southeast-1.amazonaws.com/node-app:2
         ports:
         - containerPort: 3000
