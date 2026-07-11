@@ -3,21 +3,15 @@ pipeline {
 
     environment {
         AWS_REGION = "ap-southeast-1"
-        ECR_REPO = "646724772680.dkr.ecr.ap-southeast-1.amazonaws.com/node-app"
+        ACCOUNT_ID = "646724772680"
+        ECR_REPO = "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/node-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
         IMAGE = "${ECR_REPO}:${IMAGE_TAG}"
     }
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                git branch: 'main',
-                url: 'https://github.com/shivaji67/nodejs-devops-project.git'
-            }
-        }
-
-        stage('Install Node Dependencies') {
+        stage('Install Dependencies') {
             steps {
                 sh 'npm install'
             }
@@ -33,16 +27,15 @@ pipeline {
 
         stage('Login to Amazon ECR') {
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-creds'
-                ]]) {
-
+                withCredentials([
+                    [
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-creds'
+                    ]
+                ]) {
                     sh '''
-                    aws ecr get-login-password --region $AWS_REGION \
-                    | docker login \
-                    --username AWS \
-                    --password-stdin 646724772680.dkr.ecr.ap-southeast-1.amazonaws.com
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
                     '''
                 }
             }
@@ -51,7 +44,7 @@ pipeline {
         stage('Tag Docker Image') {
             steps {
                 sh '''
-                docker tag node-app:${BUILD_NUMBER} $IMAGE
+                docker tag node-app:${BUILD_NUMBER} ${IMAGE}
                 '''
             }
         }
@@ -59,12 +52,12 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 sh '''
-                docker push $IMAGE
+                docker push ${IMAGE}
                 '''
             }
         }
 
-        stage('Update Kubernetes Deployment') {
+        stage('Update Kubernetes YAML') {
             steps {
                 sh '''
                 sed -i "s|image:.*|image: ${IMAGE}|" deployment.yaml
@@ -75,10 +68,10 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 sh '''
-                sudo -u ec2-user kubectl apply -f deployment.yaml
-                sudo -u ec2-user kubectl apply -f service.yaml
-                sudo -u ec2-user kubectl rollout restart deployment/node-app
-                sudo -u ec2-user kubectl rollout status deployment/node-app
+                sudo -n -u ec2-user /usr/local/bin/kubectl apply -f deployment.yaml
+                sudo -n -u ec2-user /usr/local/bin/kubectl apply -f service.yaml
+                sudo -n -u ec2-user /usr/local/bin/kubectl rollout restart deployment/node-app
+                sudo -n -u ec2-user /usr/local/bin/kubectl rollout status deployment/node-app
                 '''
             }
         }
@@ -86,8 +79,9 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
-                sudo -u ec2-user kubectl get pods
-                sudo -u ec2-user kubectl get svc
+                sudo -n -u ec2-user /usr/local/bin/kubectl get deployment
+                sudo -n -u ec2-user /usr/local/bin/kubectl get pods
+                sudo -n -u ec2-user /usr/local/bin/kubectl get svc
                 '''
             }
         }
@@ -96,11 +90,11 @@ pipeline {
     post {
 
         success {
-            echo 'Pipeline completed successfully.'
+            echo "Build #${BUILD_NUMBER} completed successfully."
         }
 
         failure {
-            echo 'Pipeline failed.'
+            echo "Pipeline failed."
         }
 
         always {
